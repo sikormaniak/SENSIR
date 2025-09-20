@@ -1,0 +1,1073 @@
+substitutions:
+  name: esphome-web-5ef490
+  friendly_name: current
+  i2c_sda_pin: GPIO27
+  i2c_scl_pin: GPIO22
+  uart_plantower_tx_pin: GPIO1
+  uart_plantower_rx_pin: GPIO3
+  ina3221_address: "0x41"
+  ads1115_address: "0x48"
+  bme680_address: "0x76"
+  bmp280_address: "0x77"
+  ens160_address: "0x53"
+  slave_address: "0x02"
+  page_const: "20"
+
+
+esphome:
+  name: esphome-web-78fae0
+  friendly_name: 2k25_PC
+  min_version: 2025.7.0
+  name_add_mac_suffix: false
+  project:
+    name: esphome.web
+    version: dev
+  on_boot:
+    priority: -10
+    then:
+      - lvgl.page.next:
+          animation: FADE_OUT
+          time: 500ms
+
+globals:
+
+  - id: batt_look_up
+    type: float[21]
+    restore_value: no
+    initial_value: '{4.200, 4.040,	4.024,	4.000,	3.992,	3.952,	3.904,	3.856,	3.808,	3.784,	3.728,	3.696,	3.640,	3.600,	3.560,	3.520,	3.464,	3.408,	3.360,	3.240,	3.064}'
+
+  - id: ntc_look_up
+    type: float[101]
+    restore_value: no
+    initial_value: '{33620.60372, 31893.13827, 30266.03419, 28732.83552, 27287.53953, 25924.56242, 24638.70768, 23425.13712, 22279.34413, 21197.12914, 20174.57702, 19208.03624, 18294.09964, 17429.58681, 16611.52772, 15837.14766, 15103.85337, 14409.22014, 13750.98001, 13127.01078, 12535.32581, 11974.06473, 11441.48467, 10935.95224, 10455.9361, 10000, 9566.796425, 9155.060618, 8763.605074, 8391.314428, 8037.140687, 7700.098824, 7379.262663, 7073.761066, 6782.774379, 6505.531126, 6241.304936, 5989.411673, 5749.20677, 5520.082741, 5301.466859, 5092.818999, 4893.629613, 4703.417852, 4521.729802, 4348.13685, 4182.234141, 4023.639149, 3871.990336, 3726.945896, 3588.182582, 3455.394611, 3328.292635, 3206.602774, 3090.065722, 2978.435896, 2871.480647, 2768.979515, 2670.723535, 2576.51458, 2486.164751, 2399.4958, 2316.338585, 2236.532568, 2159.925334, 2086.372143, 2015.735507, 1947.884793, 1882.695852, 1820.050664, 1759.837009, 1701.948155, 1646.282566, 1592.743624, 1541.239367, 1491.682246, 1443.988895, 1398.079905, 1353.879628, 1311.315975, 1270.320235, 1230.826902, 1192.773511, 1156.100484, 1120.750982, 1086.670769, 1053.808081, 1022.113501, 991.5398434, 962.042045, 933.5770578, 906.1037516, 879.5828198, 853.9766911, 829.249445, 805.3667326, 782.2957007, 760.0049207, 738.4643207, 717.6451209, 697.519773}'
+
+  - id: batt_icon_look_up
+    type: int[4]
+    restore_value: no
+    initial_value: '{90, 75, 50, 25}'
+
+  - id: current_icon
+    type: std::string
+    restore_value: yes
+    max_restore_data_length: 24
+    initial_value: '"0"'
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+image:
+  - file: https://i.imgur.com/BsqwPbT.png
+    id: boot_image
+    type: RGB565
+
+  - file: https://i.imgur.com/LQ4ZHIs.png
+    id: background
+    type: RGB565
+
+  - file: mdi:gauge
+    id: pressure_image
+    transparency: opaque
+    type: grayscale
+    resize: 50x50
+
+  - file: mdi:thermometer
+    id: temp_image
+    transparency: opaque
+    type: grayscale
+    resize: 50x50
+
+  - file: mdi:water-percent
+    id: hum_image
+    transparency: opaque
+    type: grayscale
+    resize: 50x50
+
+  - file: mdi:flash
+    id: volt_image
+    transparency: opaque
+    type: grayscale
+    resize: 30x30
+    
+  - file: mdi:current-dc
+    id: dc_image
+    transparency: opaque
+    type: grayscale
+    resize: 30x30
+
+  - file: mdi:power-plug
+    id: power_image
+    transparency: opaque
+    type: grayscale
+    resize: 30x30
+    
+ads1115:
+  - address: ${ads1115_address}
+
+i2c:
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  scan: true
+
+spi:
+  - id: lcd
+    clk_pin: GPIO14
+    mosi_pin: GPIO13
+    miso_pin: GPIO12
+  - id: touch
+    clk_pin: GPIO25
+    mosi_pin: GPIO32
+    miso_pin: GPIO39  
+
+uart:
+  - id: uart_plantower
+    tx_pin: ${uart_plantower_tx_pin}
+    rx_pin: ${uart_plantower_rx_pin}
+    baud_rate: 9600
+
+
+# PMSA003 Sleep/Wake Interval
+interval:
+  - interval: 15min
+    then:
+      - logger.log: "PMSA003 → wake up and measure"
+      - uart.write:
+          id: uart_plantower
+          data: [0x42, 0x4D, 0xE4, 0x00, 0x01, 0x01, 0x74]  # wake up
+      - delay: 60s
+      - uart.write:
+          id: uart_plantower
+          data: [0x42, 0x4D, 0xE4, 0x00, 0x00, 0x01, 0x73]  # sleep
+
+
+
+bme68x_bsec2_i2c:
+  address: ${bme680_address}
+  model: bme680
+  operating_age: 28d
+  sample_rate: LP
+  supply_voltage: 3.3V
+
+display:
+  - platform: ili9xxx
+    id: my_display
+    model: ILI9341
+    spi_id: lcd
+    cs_pin: 
+      number: 15
+      ignore_strapping_warning: true
+    dc_pin: 
+      number: 2
+      ignore_strapping_warning: true
+    invert_colors: False
+    auto_clear_enabled: false
+    update_interval: never
+
+touchscreen:
+  - platform: xpt2046
+    id: my_touch
+    cs_pin: 33
+    interrupt_pin: 36
+    spi_id: touch
+    calibration:
+      x_min: 281
+      x_max: 3848
+      y_min: 347
+      y_max: 3878
+    transform:
+      mirror_x: false
+      mirror_y: false
+      swap_xy: false
+    on_touch:
+      then:
+        - lvgl.page.next: 
+            animation: FADE_OUT
+            time: 0.5s
+
+output:
+   - platform: ledc
+     id: former_led_pin
+     pin: GPIO21 # Define a pin for the LED controller
+
+light:
+  - platform: monochromatic
+    output: former_led_pin
+    name: "Display Backlight"
+    id: back_light
+    restore_mode: ALWAYS_ON
+
+lvgl:
+  buffer_size: 25%
+  touchscreens:
+    touchscreen_id: my_touch
+
+  on_idle:
+    timeout: 120s   # turn off backlight after 2 min idle
+    then:
+      - logger.log: "LVGL idle, turning off LCD"
+      - light.turn_off:
+          id: back_light
+          transition_length: 2s
+
+  on_resume:
+    then:
+      - logger.log: "LVGL resumed, turning on LCD"
+      - light.turn_on:
+          id: back_light
+          brightness: 100%
+          transition_length: 1s
+
+
+  pages:
+    - id: booting
+      skip: yes
+      widgets:
+        - image:
+            align: CENTER
+            src: boot_image
+        - spinner:
+            x: 70
+            y: 185
+            height: 100 
+            width: 100
+            spin_time: 1s
+            arc_length: 360deg
+            id: booting_spinner
+            indicator:
+              arc_color: 0xd4d4d4
+        - label:
+            id: boot_text_id
+            align: BOTTOM_MID
+            width: 58
+            height: 20 
+            text: "booting"
+
+    - id: main_page
+      widgets:
+        - image:
+            align: CENTER
+            src: background
+
+        - label:
+            id: wifi_icon_id
+            x: 10
+            y: 10
+            width: 18
+            height: 16
+            text: " "
+
+        - label:
+            id: RS232_icon_id
+            x: 35
+            y: 10
+            width: 18
+            height: 16
+            text: " "
+
+        - label:
+            id: USB_icon_id
+            x: 55
+            y: 10
+            width: 18
+            height: 16
+            text: "\uF287"
+
+        - label:
+            id: charging_icon_id
+            x: 170
+            y: 10
+            width: 18
+            height: 16
+            text: " "
+
+        - label:
+            id: bat_icon_id
+            x: 180
+            y: 10
+            width: 18
+            height: 16
+            text: "NaN"
+
+        - label:
+            id: batt_perc_id
+            x: 200
+            y: 10
+            width: 40
+            height: 16  
+            text: "NaN"  
+
+        - label:
+            id: main_text   
+            align: TOP_MID
+            text_font: montserrat_22
+            text: 'Current Air Quality'
+            y: 70
+
+
+        - image:
+            src: temp_image
+            align: TOP_LEFT
+            y: 110
+
+        - label:
+            id: temp_main
+            align: TOP_LEFT
+            y: 165
+            x: 10
+            width: 50
+            height: 15
+            text: 'NaN'
+
+        - image:
+            src: hum_image
+            align: TOP_MID
+            y: 110
+            x: -5
+
+        - label:
+            id: hum_main
+            align: TOP_MID
+            y: 165
+            width: 50
+            height: 15
+            text: 'NaN'
+
+        - image:
+            src: pressure_image
+            align: TOP_RIGHT
+            y: 110
+            x: -10
+
+        - label:
+            id: pressure_main
+            align: TOP_RIGHT
+            y: 165
+            x: -10
+            width: 50
+            height: 15
+            text: 'NaN'
+
+        - label:
+            id: pm1_image
+            align: LEFT_MID
+            y: 50
+            width: 60
+            height: 16
+            text_font: montserrat_20 
+            text: 'PM1.0'
+
+        - label:
+            id: pm1_main
+            align: LEFT_MID
+            y: 70
+            width: 60
+            height: 16
+            text: 'NaN'
+
+        - label:
+            id: pm2_5_image
+            align: CENTER
+            y: 50
+            width: 70
+            height: 16
+            text_font: montserrat_20 
+            text: 'PM2.5' 
+
+        - label:
+            id: pm2_5_main
+            align: CENTER
+            y: 70
+            width: 60
+            height: 16
+            text: 'NaN'      
+
+        - label:
+            id: pm10_image
+            align: RIGHT_MID
+            y: 50
+            width: 60
+            height: 15
+            text_font: montserrat_20 
+            text: 'PM10'
+
+        - label:
+            id: pm10_main
+            align: RIGHT_MID
+            y: 70
+            width: 60
+            height: 15
+            text: 'NaN'        
+
+        - label:
+            id: IAQ_img
+            align: BOTTOM_MID
+            text_font: montserrat_18
+            y: -50
+            height: 15
+            text: 'Indoor Air Quality (IAQ)'  
+
+        - label:
+            id: IAQ_value_main
+            align: BOTTOM_MID
+            x: -75
+            y: -30          
+            width: 50
+            height: 15
+            text: 'NaN'    
+
+        - label:
+            id: IAQ_text_main
+            align: BOTTOM_MID
+            y: -30          
+            width: 100
+            height: 15
+            text: 'NaN'    
+
+    - id: ina3221_page
+      widgets:
+        - image:
+            align: CENTER
+            src: background
+
+        - label:
+            id: INA3221_main_text
+            align: TOP_MID
+            y: 20
+            width: 100
+            height: 16
+            text_font: montserrat_20 
+            text: 'INA3221' 
+
+        - label:
+            id: INA3221_CH1_text
+            align: TOP_LEFT
+            y: 70
+            width: 70
+            height: 16
+            text_font: montserrat_20 
+            text: 'CH1'            
+
+        - label:
+            id: INA3221_CH2_text
+            align: LEFT_MID
+            y: 20
+            width: 70
+            height: 16
+            text_font: montserrat_20 
+            text: 'CH2' 
+
+        - label:
+            id: INA3221_CH3_text
+            align: BOTTOM_LEFT
+            y: -30
+            width: 70
+            height: 16
+            text_font: montserrat_20 
+            text: 'CH3'
+
+        - label:
+            id: INA3221_CH1_C_value
+            align: TOP_MID
+            y: 70
+            width: 70
+            height: 16            
+            text: 'NaN'            
+
+        - label:
+            id: INA3221_CH2_C_value
+            align: CENTER
+            y: 20
+            width: 70
+            height: 16            
+            text: 'NaN'         
+
+        - label:
+            id: INA3221_CH3_C_value
+            align: BOTTOM_MID
+            y: -30
+            width: 70
+            height: 16            
+            text: 'NaN'         
+
+        - label:
+            id: INA3221_CH1_V_value
+            align: TOP_MID
+            y: 50
+            width: 70
+            height: 16            
+            text: 'NaN'            
+
+        - label:
+            id: INA3221_CH2_V_value
+            align: CENTER
+            width: 70
+            height: 16            
+            text: 'NaN'         
+
+        - label:
+            id: INA3221_CH3_V_value
+            align: BOTTOM_MID
+            y: -50
+            width: 70
+            height: 16            
+            text: 'NaN'    
+
+        - label:
+            id: INA3221_CH1_P_value
+            align: TOP_MID
+            y: 90
+            width: 70
+            height: 16            
+            text: 'NaN'            
+
+        - label:
+            id: INA3221_CH2_P_value
+            align: CENTER
+            y: 40
+            width: 70
+            height: 16            
+            text: 'NaN'         
+
+        - label:
+            id: INA3221_CH3_P_value
+            align: BOTTOM_MID
+            y: -10
+            width: 70
+            height: 16            
+            text: 'NaN'         
+
+
+        - image:
+            src: dc_image
+            align: TOP_RIGHT
+            y: 70
+
+        - image:
+            src: dc_image
+            align: RIGHT_MID
+            y: 20  
+
+        - image:
+            src: dc_image
+            align: BOTTOM_RIGHT
+            y: -30
+
+        - image:
+            src: volt_image
+            align: TOP_RIGHT
+            y: 50
+
+        - image:
+            src: volt_image
+            align: RIGHT_MID    
+
+        - image:
+            src: volt_image
+            align: BOTTOM_RIGHT
+            y: -50
+
+        - image:
+            src: power_image
+            align: TOP_RIGHT
+            y: 90
+
+        - image:
+            src: power_image
+            align: RIGHT_MID
+            y: 40       
+
+        - image:
+            src: power_image
+            align: BOTTOM_RIGHT
+            y: -10
+
+    - id: setting_page
+      widgets:
+        - image:
+            align: CENTER
+            src: background    
+
+#  on_idle:
+#    timeout: 120s
+#    then:
+#      - logger.log: "LVGL is idle"
+#      - lvgl.pause:
+#      - light.turn_off:
+#          id: back_light
+#          transition_length: 5s
+
+sensor:
+  - platform: ina3221
+    address: ${ina3221_address} 
+    channel_3:
+      shunt_resistance: 0.04 ohm
+      current:
+        name: "INA3221 DC IN Current"
+        id: ina3221_CH1_C
+        accuracy_decimals: 3
+        on_value:
+          then:      
+          - lvgl.label.update:
+              id: INA3221_CH1_C_value
+              text: !lambda |-
+                return (String(ina3221_CH1_C->state, 3) + " A").c_str();
+      power:
+        name: "INA3221 DC IN Power"
+        id: ina3221_CH1_P
+        accuracy_decimals: 3
+        on_value_range:
+          - above: 1
+            then:
+              - lvgl.label.update:
+                  id: charging_icon_id
+                  text: "\uF0E7"  # Charging icon
+          - below: 1
+            then:
+              - lvgl.label.update:
+                  id: charging_icon_id
+                  text: " "  # Empty space if power below 1
+        on_value:
+          then:      
+          - lvgl.label.update:
+              id: INA3221_CH1_P_value
+              text:
+                format: "%6s W"
+                args: [ '(String(ina3221_CH1_P->state, 3)).c_str()' ] 
+
+      bus_voltage:
+        name: "INA3221 DC IN Bus Voltage"
+        id: ina3221_CH1_V
+        accuracy_decimals: 3
+        on_value:
+          then:      
+            - lvgl.label.update:
+                id: INA3221_CH1_V_value
+                text:
+                  format: "%6s V"
+                  args: [ '(String(ina3221_CH1_V->state, 3)).c_str()' ] 
+    channel_2:
+      shunt_resistance: 0.04 ohm
+      current:
+        name: "INA3221 5V Current"
+        id: ina3221_CH2_C
+        accuracy_decimals: 3
+        on_value:
+          then:      
+            - lvgl.label.update:
+                id: INA3221_CH2_C_value
+                text:
+                  format: "%6s A"
+                  args: [ '(String(ina3221_CH2_C->state, 3)).c_str()' ] 
+
+      power:
+        name: "INA3221 5V Power"
+        id: ina3221_CH2_P
+        accuracy_decimals: 3
+        on_value:
+          then:      
+            - lvgl.label.update:
+                id: INA3221_CH2_P_value
+                text:
+                  format: "%6s W"
+                  args: [ '(String(ina3221_CH2_P->state, 3)).c_str()' ] 
+
+      bus_voltage:
+        name: "INA3221 5V Bus Voltage"
+        id: ina3221_CH2_V
+        accuracy_decimals: 3
+        on_value:
+          then:      
+            - lvgl.label.update:
+                id: INA3221_CH2_V_value
+                text:
+                  format: "%6s V"
+                  args: [ '(String(ina3221_CH2_V->state, 3)).c_str()' ]         
+        
+
+    channel_1:
+      shunt_resistance: 0.04 ohm
+      current:
+        name: "INA3221 BAT Current IN/OUT"
+        id: ina3221_CH3_C
+        accuracy_decimals: 3
+        on_value:
+          then:      
+            - lvgl.label.update:
+                id: INA3221_CH3_C_value
+                text:
+                  format: "%6s A"
+                  args: [ '(String(ina3221_CH3_C->state, 3)).c_str()' ] 
+          
+      power:
+        name: "INA3221 BAT Power IN/OUT"
+        id: ina3221_CH3_P
+        accuracy_decimals: 3
+        on_value:
+          then:      
+            - lvgl.label.update:
+                id: INA3221_CH3_P_value
+                text:
+                  format: "%6s W"
+                  args: [ '(String(ina3221_CH3_P->state, 3)).c_str()' ] 
+
+      bus_voltage:
+        name: "INA3221 BAT Bus Voltage"
+        id: ina3221_CH3_V
+        accuracy_decimals: 3
+        on_value:
+          then:
+            - lambda: |-
+                // Loop through the battery percentage thresholds
+                for (int i = 0; i < 21; i++) {
+                  // Check if the current state of the INA3221 sensor is above the threshold
+                  if (id(ina3221_CH3_V).state >= id(batt_look_up)[i]) {
+                    // Calculate and publish the battery percentage
+                    id(bat_perc).publish_state(100 - i * 5);
+
+                    // Uncomment this section to assign an icon based on battery percentage
+                    
+                    if (id(bat_perc).state >= id(batt_icon_look_up)[0]) {
+                      id(current_icon) = "\uF240"; // Icon for 100%
+                    } else if (id(bat_perc).state >= id(batt_icon_look_up)[1]) {
+                      id(current_icon) = "\uF241"; // Icon for 95%
+                    } else if (id(bat_perc).state >= id(batt_icon_look_up)[2]) {
+                      id(current_icon) = "\uF242"; // Icon for 90%
+                    } else if (id(bat_perc).state >= id(batt_icon_look_up)[3]) {
+                      id(current_icon) = "\uF243"; // Icon for 85%
+                    } else {
+                      id(current_icon) = "\uF244"; // Default icon for lower percentages
+                    }
+                    
+                    
+                    break; // Exit the loop after publishing the battery percentage
+                  }
+                }
+
+                
+            - lvgl.label.update:
+                id: batt_perc_id
+                text: !lambda |-
+                  return String(id(bat_perc).state, 0).c_str();  // Update the battery percentage label
+                  
+            - lvgl.label.update:
+                id: bat_icon_id
+                text: !lambda |-
+                  return id(current_icon).c_str();  // Get the string from the global array
+
+            - lvgl.label.update:
+                id: INA3221_CH3_V_value
+                text:
+                  format: "%s V"
+                  args: [ '(String(ina3221_CH3_V->state, 3)).c_str()' ]        
+            
+
+    update_interval: 10s
+
+  - platform: ads1115
+    multiplexer: 'A0_GND'
+    gain: 6.144
+    name: "ADS1115 Channel0 AN_INT EXT0"
+    id: ads1115_CH0
+
+  - platform: ads1115
+    multiplexer: 'A1_GND'
+    gain: 6.144
+    name: "ADS1115 Channel1 AN_EXT1"
+    id: ads1115_CH1
+
+  - platform: ads1115
+    multiplexer: 'A2_GND'
+    gain: 6.144
+    name: "ADS1115 Channel2 AN_EXT2"
+    id: ads1115_CH2
+
+  - platform: aht10
+    variant: AHT20
+    temperature:
+      name: "AHT20-Temperature"
+      id: aht_temp
+    humidity:
+      name: "AHT20-Humidity"
+      id: aht_hum
+      accuracy_decimals: 1
+    update_interval: 60s
+
+  - platform: pmsx003
+    id: PMSX003_pm_sensor
+    type: PMSX003
+    uart_id: uart_plantower
+    pm_1_0:
+      name: "Particulate Matter <1.0µm Concentration"
+      id: PMSX003_pm1
+      accuracy_decimals: 1
+      on_value:
+        then:
+        - lvgl.label.update:
+            id: pm1_main
+            text:
+              format: "%s"
+              args: [ '(String(PMSX003_pm1->state, 1)).c_str()' ] 
+
+    pm_2_5:
+      name: "Particulate Matter <2.5µm Concentration"
+      id: PMSX003_pm2_5
+      accuracy_decimals: 1
+      on_value:
+        then:
+        - lvgl.label.update:
+            id: pm2_5_main
+            text:
+              format: "%s"
+              args: [ '(String(PMSX003_pm2_5->state, 1)).c_str()' ]    
+
+    pm_10_0:
+      name: "Particulate Matter <10.0µm Concentration"
+      id: PMSX003_pm10
+      accuracy_decimals: 1
+      on_value:
+        then:
+        - lvgl.label.update:
+            id: pm10_main
+            text:
+              format: "%s"
+              args: [ '(String(PMSX003_pm10->state, 1)).c_str()' ] 
+
+  - platform: ens160_i2c
+    address: ${ens160_address} 
+    eco2:
+      name: "ENS160 eCO2"
+    tvoc:
+      name: "ENS160 Total Volatile Organic Compounds"
+    aqi:
+      id: ens160_air_quality_index
+      name: "ENS160 Air Quality Index"
+    update_interval: 5s
+#    compensation:
+#      temperature: bme68x_temp
+#      humidity: bme68x_hum
+
+
+
+  - platform: bmp280_i2c
+    temperature:
+      name: "BMP280 Temperature"
+    pressure:
+      name: "BMP280 Pressure"
+    address: ${bmp280_address}
+    update_interval: 10s
+
+
+ # - platform: bme680
+  - platform: bme68x_bsec2
+    temperature:
+      name: "BME680 Temperature"
+      id: bme68x_temp
+      on_value:
+        then:
+          - lvgl.label.update:
+              id: temp_main
+              text:
+                format: "%s"
+                args: [ '(String(bme68x_temp->state, 1)).c_str()' ] 
+
+    pressure:
+      name: "BME680 Pressure"
+      id: bme68x_pre
+      accuracy_decimals: 0
+      on_value:
+        then:
+          - lvgl.label.update:
+              id: pressure_main
+              text:
+                format: "%s"
+                args: [ '(String(bme68x_pre->state, 0)).c_str()' ] 
+      
+    humidity:
+      name: "BME680 Humidity"
+      id: bme68x_hum
+      on_value:
+        then:
+          - lvgl.label.update:
+              id: hum_main
+              text:
+                format: "%s"
+                args: [ '(String(bme68x_hum->state, 1)).c_str()' ] 
+
+    gas_resistance:
+      id: gas_resistance
+      name: "BME680 Gas Resistance"
+    
+    iaq:
+      name: "BME680 Indoor Air Quality"
+      id: bme68x_iaq
+#      icon: "mdi:gauge"
+      # calculation: comp_gas = log(R_gas[ohm]) + 0.04 log(Ohm)/%rh * hum[%rh]
+      on_value:
+          then:      
+          - lvgl.label.update:
+              id: IAQ_value_main
+              text:
+                format: "%.1f"  # Use a proper float format
+                args: [ 'id(bme68x_iaq).state' ]
+#      lambda: |-
+#        return log(id(gas_resistance).state) + 0.04 *  id(bme68x_hum).state;
+#      state_class: "measurement"  
+    co2_equivalent:
+      name: "BME68x CO2 Equivalent"
+    breath_voc_equivalent:
+      name: "BME68x Breath VOC Equivalent"
+
+  - platform: template
+    name: "BATT %"
+    unit_of_measurement: "%"
+    id: bat_perc #value 0-100 percentage  
+    accuracy_decimals: 0
+
+  - platform: template
+    name: "NTC thermistor 1"
+    lambda: |-
+     float Rt=8200*id(ads1115_CH1).state/(id(ads1115_CH0).state-id(ads1115_CH1).state);
+     int counter=0;
+     for (int i=0; i<101; i++)
+     {
+     if (Rt>=id(ntc_look_up)[i] )
+     {
+     counter=i;
+     break;
+     }
+     }
+     return counter;
+     //return Rt;
+
+
+  # --- Channel 3: DC IN Power After Shunt ---
+  - platform: template
+    name: "INA3221 DC IN Power After Shunt"
+    id: ina3221_CH1_P_load
+    lambda: |-
+      float I = id(ina3221_CH1_C).state;
+      float Vbus = id(ina3221_CH1_V).state;
+      float Rshunt = 0.04;
+      float Vload = Vbus - (I * Rshunt);
+      return I * Vload;
+    accuracy_decimals: 3
+    
+
+  # --- Channel 2: 5V IN Power After Shunt ---
+  - platform: template
+    name: "INA3221 5V Power After Shunt"
+    id: ina3221_CH2_P_load
+    lambda: |-
+      float I = id(ina3221_CH2_C).state;
+      float Vbus = id(ina3221_CH2_V).state;
+      float Rshunt = 0.04;
+      float Vload = Vbus - (I * Rshunt);
+      return I * Vload;
+    accuracy_decimals: 3
+
+  # --- Channel 3: BATT Power After Shunt ---
+  - platform: template
+    name: "INA3221 BAT Power After Shunt"
+    id: ina3221_CH3_P_load
+    lambda: |-
+      float I = id(ina3221_CH3_C).state;
+      float Vbus = id(ina3221_CH3_V).state;
+      float Rshunt = 0.04;
+      float Vload = Vbus - (I * Rshunt);
+      return I * Vload;
+    accuracy_decimals: 3    
+
+text_sensor:
+  - platform: template
+    name: "ENS160 Air Quality Rating"
+    lambda: |-
+      switch ( (int) (id(ens160_air_quality_index).state) ) {
+        case 1: return {"Excellent"};
+        case 2: return {"Good"};
+        case 3: return {"Moderate"};
+        case 4: return {"Poor"};
+        case 5: return {"Unhealthy"};
+        default: return {"Not Available"};
+        }
+
+
+  - platform: bme68x_bsec2
+    iaq_accuracy:
+      name: "BME68x IAQ Accuracy"
+
+  - platform: template
+    name: "BME680 IAQ Classification"
+    id: iaq_class
+    icon: "mdi:checkbox-marked-circle-outline"
+    on_value:
+      then:
+        - lvgl.label.update:
+            id: IAQ_text_main
+            text:
+              format: "%s"
+              args: [ 'id(iaq_class).state.c_str()' ]
+
+    lambda: |-
+      if (int(id(bme68x_iaq).state) <= 50) {
+        return {"Excellent"};
+      }
+      else if (int(id(bme68x_iaq).state) <= 100) {
+        return {"Good"};
+      }
+      else if (int(id(bme68x_iaq).state) <= 150) {
+        return {"Lightly polluted"};
+      }
+      else if (int(id(bme68x_iaq).state) <= 200) {
+        return {"Moderately polluted"};
+      }
+      else if (int(id(bme68x_iaq).state) <= 250) {
+        return {"Heavily polluted"};
+      }
+      else if (int(id(bme68x_iaq).state) <= 350) {
+        return {"Severely polluted"};
+      }
+      else if (int(id(bme68x_iaq).state) <= 500) {
+        return {"Extremely polluted"};
+      }
+      else {
+        return {"unknown"};
+      }
+
+logger: 
+
+# Enable Home Assistant API
+api:
+
+# Allow Over-The-Air updates
+ota:
+- platform: esphome
+
+wifi:
+  # Set up a wifi access point
+  ap: {}
+  on_connect:
+    then:
+    - lvgl.label.update:
+        id: wifi_icon_id
+        text: "\uF1EB"
+
+  on_disconnect:
+    then:
+    - lvgl.label.update:
+        id: wifi_icon_id
+        text: " "
+
+# In combination with the `ap` this allows the user
+# to provision wifi credentials to the device via WiFi AP.
+captive_portal:
+
+dashboard_import:
+  package_import_url: github://esphome/example-configs/esphome-web/esp32.yaml@main
+  import_full_config: true
+
+# To have a "next url" for improv serial
+web_server:
+
+#look up table bateria
+#4.20000000000000	4.04800000000000	4.02400000000000	4	3.99200000000000	3.95200000000000	3.90400000000000	3.85600000000000	3.80800000000000	3.78400000000000	3.72800000000000	3.69600000000000	3.64000000000000	3.60000000000000	3.56000000000000	3.52000000000000	3.46400000000000	3.40800000000000	3.36000000000000	3.24000000000000	3.06400000000000
